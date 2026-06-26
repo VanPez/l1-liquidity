@@ -274,8 +274,8 @@ async function load(){
   document.getElementById("s-price").textContent = price!=null ? "$"+price.toFixed(5) : "—";
   document.getElementById("osmo-sub").textContent = (money(totalLiq)||"$0")+" · "+shown.length+" pools";
 
-  const volCell = p => p.warming ? '<span class="mut">warming…</span>' : (p.vol!=null ? money(p.vol) : '<span class="mut">—</span>');
-  const aprCell = p => p.apr!=null ? p.apr.toFixed(1)+'%' : (p.warming ? '<span class="mut">…</span>' : '<span class="mut">—</span>');
+  const volCell = p => p.vol!=null ? money(p.vol) : '<span class="mut">warming…</span>';
+  const aprCell = p => p.apr!=null ? p.apr.toFixed(1)+'%' : '<span class="mut">…</span>';
 
   document.getElementById("osmo-rows").innerHTML = shown.map(p=>`
     <tr>
