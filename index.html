@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>L1 Liquidity Map — GenesisL1</title>
+<!--
+  L1 Liquidity Map — a serverless dashboard of every GenesisL1 (L1) liquidity
+  pool, in one place, with the total nobody else surfaces.
+
+  Serverless: one static HTML file, no backend of its own. Host on IPFS / any
+  static host. Data sources (all public, no API key):
+    - Osmosis SQS  https://sqs.osmosis.zone/pools?IDs=...  -> per-pool liquidity, fee, pair
+    - l1price      <L1PRICE>/pools  -> per-pool 24h volume + APR (keyless, from the chain's
+                   poolmanager cumulative volume); <L1PRICE>/price -> L1 price + total volume
+
+  L1 IBC denom on Osmosis: ibc/F16FDC11A7662B86BC0B9CE61871CBACF7C20606F95E86260FD38915184B75B4
+-->
+<style>
+  :root{
+    --bg:#080b14; --panel:#0f1422; --card:#131a2b; --line:#212a40;
+    --fg:#eef1f7; --mut:#8b93a7; --accent:#7c5cff; --accent2:#a78bfa;
+    --ok:#2ecc71; --warn:#f5a524;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:
+        radial-gradient(900px 500px at 80% -8%, #1a2138 0%, rgba(8,11,20,0) 55%),
+        radial-gradient(900px 500px at 0% -5%, #16203a 0%, rgba(8,11,20,0) 50%),
+        var(--bg);
+       color:var(--fg);min-height:100vh;
+       font:15px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       -webkit-font-smoothing:antialiased;}
+  a{color:inherit;}
+  .wrap{max-width:920px;margin:0 auto;padding:0 20px 64px;}
+
+  /* top bar */
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;
+          padding:16px 0 14px;border-bottom:1px solid var(--line);margin-bottom:26px;flex-wrap:wrap;}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.2px;}
+  .glyph{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:#fff;overflow:hidden;}
+  .glyph img{width:23px;height:23px;object-fit:contain;display:block;}
+  .glyph.fallback{background:linear-gradient(135deg,var(--accent),#4cc9f0);color:#0a0f1c;font-weight:900;font-size:14px;}
+  .brand small{color:var(--mut);font-weight:500;}
+  .nav{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .nav a{color:var(--mut);text-decoration:none;font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid transparent;}
+  .nav a:hover{color:var(--fg);border-color:var(--line);background:var(--panel);}
+
+  /* hero */
+  .hero{margin:8px 0 22px;}
+  .hero .lab{color:var(--mut);font-size:13px;text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:8px;}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok);}
+  .hero .num{font-size:52px;font-weight:800;line-height:1.05;margin:6px 0 2px;
+             background:linear-gradient(180deg,#fff,#c7c4ff);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .hero .meta{color:var(--mut);font-size:13px;}
+  .hdr-badges{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0 0;}
+  .badge{font-size:11px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);color:var(--mut);background:var(--panel);white-space:nowrap;}
+  .badge.live{color:var(--ok);border-color:#1d4732;background:#0d2318;}
+  .badge.soon{color:var(--warn);border-color:#4a3a17;background:#241c0c;}
+  .badge.link{color:var(--accent2);text-decoration:none;}
+  .badge.link:hover{border-color:var(--accent);}
+
+  /* stat strip */
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px 15px;}
+  .stat .k{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.05em;}
+  .stat .v{font-size:21px;font-weight:700;margin-top:3px;}
+
+  .controls{display:flex;align-items:center;gap:10px;margin-bottom:14px;color:var(--mut);font-size:13px;flex-wrap:wrap;}
+  .controls input{width:68px;background:#0c1322;border:1px solid var(--line);color:var(--fg);border-radius:7px;padding:5px 8px;font:13px ui-monospace,Menlo,monospace;}
+  .refresh{color:var(--mut);font-size:12px;}
+
+  /* venue cards */
+  .venue{background:var(--card);border:1px solid var(--line);border-radius:16px;margin-bottom:16px;overflow:hidden;}
+  .venue-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap;}
+  .venue-head .name{display:flex;align-items:center;gap:10px;font-weight:700;}
+  .venue-head .badge{font-size:11px;}
+  .table-scroll{overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;min-width:520px;}
+  th,td{text-align:right;padding:11px 18px;font-size:14px;white-space:nowrap;}
+  th:first-child,td:first-child{text-align:left;}
+  th{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.04em;font-weight:600;
+     border-bottom:1px solid var(--line);cursor:pointer;user-select:none;}
+  th.sortable:hover{color:var(--fg);}
+  th .arr{opacity:.5;font-size:9px;margin-left:3px;}
+  tbody tr{border-bottom:1px solid #18203200;border-top:1px solid #161d2e;transition:background .12s;}
+  tbody tr:hover{background:#172037;}
+  tbody tr:first-child{border-top:0;}
+
+  .pair{display:flex;align-items:center;gap:10px;}
+  .ic{display:flex;}
+  .tok{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;
+       font-size:9px;font-weight:800;color:#fff;border:2px solid var(--card);}
+  .tok+.tok{margin-left:-9px;}
+  .pair .nm{display:flex;flex-direction:column;line-height:1.2;}
+  .pair .nm .p{font-weight:600;}
+  .pair .nm .id{color:var(--mut);font-size:12px;}
+  .bar{height:5px;background:#1a2236;border-radius:3px;overflow:hidden;margin:5px 0 2px;width:84px;margin-left:auto;}
+  .bar>i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#4cc9f0);}
+  .sh{color:var(--mut);font-size:11px;}
+  a.trade{color:var(--accent2);text-decoration:none;font-size:13px;}
+  a.trade:hover{text-decoration:underline;}
+  .mut{color:var(--mut);}
+
+  .scaffold{padding:18px;color:var(--mut);font-size:13px;}
+  .foot{color:var(--mut);font-size:12px;margin-top:22px;line-height:1.7;}
+  .foot a{color:var(--accent2);text-decoration:none;}
+  .err{color:var(--warn);}
+
+  @media (max-width:560px){
+    .wrap{padding:0 14px 48px;}
+    .hero .num{font-size:40px;}
+    .stats{grid-template-columns:repeat(2,1fr);}
+    th,td{padding:10px 12px;font-size:13px;}
+    .nav a{padding:5px 8px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="brand"><span class="glyph" id="brandGlyph"><img src="https://genesisl1.com/logo.svg" alt="GenesisL1" onerror="var g=document.getElementById('brandGlyph');g.textContent='L1';g.classList.add('fallback');"></span> GenesisL1 <small>· Liquidity Map</small></div>
+    <nav class="nav">
+      <a href="https://genesisl1.com" target="_blank" rel="noopener">genesisl1.com ↗</a>
+      <a href="https://app.osmosis.zone/assets/L1" target="_blank" rel="noopener">Buy L1 ↗</a>
+      <a href="https://github.com/VanPez/l1price" target="_blank" rel="noopener">Source ↗</a>
+    </nav>
+  </div>
+
+  <div class="hero">
+    <div class="lab"><span class="dot"></span> Total L1 liquidity · all venues</div>
+    <div class="num" id="s-liq">—</div>
+    <div class="meta" id="hero-meta">Every L1 pool, across every venue, in one place — including the total nobody else shows.</div>
+    <div class="hdr-badges">
+      <span class="badge live" title="A single static HTML file with no backend of its own — host it on IPFS or any static host.">● serverless</span>
+      <span class="badge" title="Liquidity is read live from Osmosis / the chain in your browser, no API key.">⬡ reads L1 on-chain</span>
+      <span class="badge soon" title="Will be stored immutably on GenesisL1's EVM so the dApp itself lives on-chain.">⛓ on-chain hosted — soon</span>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">24h volume (all)</div><div class="v" id="s-vol">—</div></div>
+    <div class="stat"><div class="k">Active pools</div><div class="v" id="s-pools">—</div></div>
+    <div class="stat"><div class="k">L1 price</div><div class="v" id="s-price">—</div></div>
+  </div>
+
+  <div class="controls">
+    <span>Hide pools under</span> $<input id="thresh" type="number" value="10" min="0" step="1">
+    <span class="refresh" id="refresh"></span>
+  </div>
+
+  <!-- OSMOSIS (live) -->
+  <div class="venue">
+    <div class="venue-head">
+      <div class="name">Osmosis <span class="badge live">● live</span></div>
+      <div class="badge" id="osmo-sub">—</div>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr>
+          <th>Pool</th>
+          <th class="sortable" data-k="fee">Fee</th>
+          <th class="sortable" data-k="liq">Liquidity</th>
+          <th class="sortable" data-k="vol">Vol 24h</th>
+          <th class="sortable" data-k="apr">APR</th>
+          <th></th>
+        </tr></thead>
+        <tbody id="osmo-rows"><tr><td colspan="6" class="mut">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- BASE (scaffold) -->
+  <div class="venue">
+    <div class="venue-head">
+      <div class="name">Base <span class="badge soon">coming soon</span></div>
+      <div class="badge">via GenesisL1 ↔ Base bridge</div>
+    </div>
+    <div class="scaffold">Lights up automatically when the L1 pool goes live on Base. The community + M are building the bridge now.</div>
+  </div>
+
+  <!-- HYPERLIQUID (scaffold) -->
+  <div class="venue">
+    <div class="venue-head">
+      <div class="name">Hyperliquid <span class="badge soon">future</span></div>
+      <div class="badge">if/when an L1 market lands</div>
+    </div>
+    <div class="scaffold">Reserved for a future HYPE/L1 market — orderbook depth, not a pool, so generic aggregators won't show it. This will.</div>
+  </div>
+
+  <div class="foot">
+    Serverless — one static HTML file, no backend of its own; host it anywhere (IPFS, any static host).<br>
+    Data: <a href="https://sqs.osmosis.zone" target="_blank" rel="noopener">Osmosis SQS</a> (live liquidity) +
+    the GenesisL1 community <a href="http://46.224.42.12:8585/pools" target="_blank" rel="noopener">l1price</a> API
+    (keyless 24h volume &amp; APR from the chain's poolmanager, plus L1 price). No API keys.
+    Volume needs ~24h to warm up after the server starts. Not financial advice. Built for the GenesisL1 community.
+  </div>
+</div>
+
+<script>
+const L1_DENOM = "ibc/F16FDC11A7662B86BC0B9CE61871CBACF7C20606F95E86260FD38915184B75B4";
+const POOL_IDS = [732, 2894, 3456, 2849, 2850, 3435, 2947, 3349, 2837];
+const SYM = {
+  "uosmo":"OSMO",
+  "ibc/27394FB092D2ECCD56123C74F36E4C1F926001CEADA9CA97EA622B25F41E5EB2":"ATOM",
+  "ibc/498A0751C798A0D9A389AA3691123DADA57DAA4FE165D5C75894505B876BA6E4":"USDC",
+  "ibc/E6931F78057F7CC5DA0FD6CEF82FF39373A6E0452BF1FD76910B93292CF356C1":"CRO",
+  "ibc/1480B8FD20AD5FCAE81EA87584D269547DD4D436843C1D20F15E00EB64743EF4":"AKT",
+  "ibc/D79E7D83AB399BFFF93433E54FAA480C191248FC556924A2A8351AE2638B3877":"TIA",
+  "factory/osmo1k6c8jln7ejuqwtqmay3yvzrg3kueaczl96pk067ldg8u835w0yhsw27twm/alloyed/allETH":"ETH",
+};
+const TCOL = {L1:"#7c5cff",OSMO:"#793ff0",ATOM:"#454f7a",USDC:"#2775ca",CRO:"#0b2a5e",AKT:"#e2483d",TIA:"#7b2bf9",ETH:"#5b6273"};
+const SQS = "https://sqs.osmosis.zone/pools?IDs=" + POOL_IDS.join(",");
+const SQS_PRICE = "https://sqs.osmosis.zone/tokens/prices?base=" + L1_DENOM;  // L1 price (https, works when hosted)
+const USDC_DENOM = "ibc/498A0751C798A0D9A389AA3691123DADA57DAA4FE165D5C75894505B876BA6E4";
+// Your l1price server — keyless per-pool volume/APR. http for now; give it https to show volume on a hosted page.
+const L1PRICE = "http://46.224.42.12:8585";
+
+let sortKey = "liq", sortDir = -1;   // default: liquidity desc
+
+const money = n => n==null ? null : n >= 1e6 ? "$"+(n/1e6).toFixed(2)+"M"
+  : n >= 1000 ? "$"+Math.round(n).toLocaleString()
+  : "$"+n.toFixed(n<1?4:2);
+
+function symbolOf(d){
+  if (SYM[d]) return SYM[d];
+  if (d.startsWith("ibc/")) return d.slice(4,8)+"…";
+  if (d.includes("/")) return d.split("/").pop().replace("alloyed","").toUpperCase();
+  return d.toUpperCase();
+}
+function tok(sym){
+  const c = TCOL[sym] || "#39415e";
+  return `<span class="tok" style="background:${c}">${sym.slice(0,3)}</span>`;
+}
+
+async function load(){
+  const thr = parseFloat(document.getElementById("thresh").value) || 0;
+  let pools = [], price = null, totalVol = null, volMap = {}, l1pVol = null;
+  try {
+    const [sqs, pj, pp] = await Promise.all([
+      fetch(SQS).then(r=>r.json()),
+      fetch(L1PRICE+"/pools").then(r=>r.json()).catch(()=>null),
+      fetch(SQS_PRICE).then(r=>r.json()).catch(()=>null),
+    ]);
+    if (pp) { const q = pp[L1_DENOM] || {}; const v = q[USDC_DENOM] ?? Object.values(q)[0]; price = v!=null ? Number(v) : null; }
+    if (pj && pj.pools) { l1pVol = pj.total_vol_24h_usd; for (const q of pj.pools) volMap[q.id] = q; }
+    for (const p of sqs){
+      const id = p.chain_model?.id ?? p.id;
+      const bal = p.balances || p.chain_model?.pool_assets?.map(a=>a.token) || [];
+      const other = bal.find(b => b.denom !== L1_DENOM);
+      const liq = Number(p.liquidity_cap || 0);
+      const fee = Number(p.spread_factor || p.chain_model?.pool_params?.swap_fee || 0) * 100;
+      pools.push({ id, sym: other ? symbolOf(other.denom) : "?", liq, fee });
+    }
+  } catch(e){
+    document.getElementById("osmo-rows").innerHTML =
+      `<tr><td colspan="6" class="err">Couldn't reach Osmosis (${e.message}).</td></tr>`;
+    return;
+  }
+
+  for (const p of pools){ const q = volMap[p.id]; p.vol = q && !q.warming_up ? q.vol_24h_usd : null; p.apr = q && !q.warming_up ? q.apr_pct : null; p.warming = q ? q.warming_up : false; }
+
+  const filtered = pools.filter(p=>p.liq >= thr);
+  const totalLiq = pools.reduce((s,p)=>s+p.liq,0);
+  const maxLiq = filtered.length ? Math.max(...filtered.map(p=>p.liq)) : 1;
+  const val = (p,k)=> k==="fee"?p.fee : k==="liq"?p.liq : k==="vol"?(p.vol??-1) : k==="apr"?(p.apr??-1) : p.liq;
+  const shown = filtered.slice().sort((a,b)=> (val(a,sortKey)-val(b,sortKey))*sortDir);
+
+  document.getElementById("s-liq").textContent = money(totalLiq) || "—";
+  document.getElementById("s-vol").textContent = (l1pVol!=null && l1pVol>0 ? money(l1pVol) : (totalVol!=null ? money(totalVol) : "—"));
+  document.getElementById("s-pools").textContent = shown.length;
+  document.getElementById("s-price").textContent = price!=null ? "$"+price.toFixed(5) : "—";
+  document.getElementById("osmo-sub").textContent = (money(totalLiq)||"$0")+" · "+shown.length+" pools";
+
+  const volCell = p => p.warming ? '<span class="mut">warming…</span>' : (p.vol!=null ? money(p.vol) : '<span class="mut">—</span>');
+  const aprCell = p => p.apr!=null ? p.apr.toFixed(1)+'%' : (p.warming ? '<span class="mut">…</span>' : '<span class="mut">—</span>');
+
+  document.getElementById("osmo-rows").innerHTML = shown.map(p=>`
+    <tr>
+      <td><div class="pair"><span class="ic">${tok("L1")}${tok(p.sym)}</span>
+        <span class="nm"><span class="p">L1 / ${p.sym}</span><span class="id">Pool #${p.id}</span></span></div></td>
+      <td>${p.fee.toFixed(p.fee<1?2:1)}%</td>
+      <td>${money(p.liq)}<div class="bar"><i style="width:${Math.max(4,p.liq/maxLiq*100).toFixed(0)}%"></i></div>
+          <span class="sh">${(p.liq/totalLiq*100).toFixed(1)}%</span></td>
+      <td>${volCell(p)}</td>
+      <td>${aprCell(p)}</td>
+      <td><a class="trade" href="https://app.osmosis.zone/pool/${p.id}" target="_blank" rel="noopener">Trade ↗</a></td>
+    </tr>`).join("") ||
+    `<tr><td colspan="6" class="mut">No pools above $${thr}.</td></tr>`;
+
+  // sort arrows
+  document.querySelectorAll("th.sortable").forEach(th=>{
+    const k = th.dataset.k;
+    th.querySelector(".arr")?.remove();
+    if (k===sortKey){ const s=document.createElement("span"); s.className="arr"; s.textContent = sortDir<0?"▼":"▲"; th.appendChild(s); }
+  });
+
+  const t = new Date().toLocaleTimeString();
+  const warm = pools.some(p=>p.warming);
+  document.getElementById("refresh").textContent = "· updated "+t+(warm?" · volume warming up (~24h)":"")+" · auto-refresh 60s";
+}
+
+document.querySelectorAll("th.sortable").forEach(th=>{
+  th.addEventListener("click", ()=>{
+    const k = th.dataset.k;
+    if (k===sortKey) sortDir = -sortDir; else { sortKey = k; sortDir = -1; }
+    load();
+  });
+});
+document.getElementById("thresh").addEventListener("input", load);
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>
