@@ -67,6 +67,8 @@
 
   .controls{display:flex;align-items:center;gap:10px;margin-bottom:14px;color:var(--mut);font-size:13px;flex-wrap:wrap;}
   .controls input{width:68px;background:#0c1322;border:1px solid var(--line);color:var(--fg);border-radius:7px;padding:5px 8px;font:13px ui-monospace,Menlo,monospace;}
+  .controls input[type=number]::-webkit-inner-spin-button,
+  .controls input[type=number]::-webkit-outer-spin-button{opacity:1;height:18px;cursor:pointer;}
   .refresh{color:var(--mut);font-size:12px;}
 
   /* venue cards */
