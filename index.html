@@ -219,7 +219,7 @@ const L1PRICE = "http://46.224.42.12:8585";
 let sortKey = "liq", sortDir = -1;   // default: liquidity desc
 
 const money = n => n==null ? null : n >= 1e6 ? "$"+(n/1e6).toFixed(2)+"M"
-  : n >= 1000 ? "$"+Math.round(n).toLocaleString()
+  : n >= 1000 ? "$"+Math.round(n).toLocaleString('en-US')
   : "$"+n.toFixed(n<1?4:2);
 
 function symbolOf(d){
