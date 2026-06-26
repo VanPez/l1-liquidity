@@ -267,7 +267,7 @@ async function load(){
   const shown = filtered.slice().sort((a,b)=> (val(a,sortKey)-val(b,sortKey))*sortDir);
 
   document.getElementById("s-liq").textContent = money(totalLiq) || "—";
-  document.getElementById("s-vol").textContent = (l1pVol!=null && l1pVol>0 ? money(l1pVol) : (totalVol!=null ? money(totalVol) : "—"));
+  document.getElementById("s-vol").textContent = (l1pVol!=null && l1pVol>0 ? money(l1pVol) : "warming…");
   document.getElementById("s-pools").textContent = shown.length;
   document.getElementById("s-price").textContent = price!=null ? "$"+price.toFixed(5) : "—";
   document.getElementById("osmo-sub").textContent = (money(totalLiq)||"$0")+" · "+shown.length+" pools";
