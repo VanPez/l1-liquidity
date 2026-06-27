@@ -193,7 +193,7 @@
   <div class="foot">
     Serverless — one static HTML file, no backend of its own; host it anywhere (IPFS, any static host).<br>
     Data: <a href="https://sqs.osmosis.zone" target="_blank" rel="noopener">Osmosis SQS</a> (live liquidity) +
-    the GenesisL1 community <a href="http://46.224.42.12:8585/pools" target="_blank" rel="noopener">l1price</a> API
+    the GenesisL1 community <a href="https://l1price.genesisl1-tools.uk/pools" target="_blank" rel="noopener">l1price</a> API
     (keyless 24h volume &amp; APR from the chain's poolmanager, plus L1 price). No API keys.
     Volume needs ~24h to warm up after the server starts. Not financial advice. Built for the GenesisL1 community.
   </div>
@@ -215,8 +215,8 @@ const TCOL = {L1:"#7c5cff",OSMO:"#793ff0",ATOM:"#454f7a",USDC:"#2775ca",CRO:"#0b
 const SQS = "https://sqs.osmosis.zone/pools?IDs=" + POOL_IDS.join(",");
 const SQS_PRICE = "https://sqs.osmosis.zone/tokens/prices?base=" + L1_DENOM;  // L1 price (https, works when hosted)
 const USDC_DENOM = "ibc/498A0751C798A0D9A389AA3691123DADA57DAA4FE165D5C75894505B876BA6E4";
-// Your l1price server — keyless per-pool volume/APR. http for now; give it https to show volume on a hosted page.
-const L1PRICE = "http://46.224.42.12:8585";
+// Your l1price server — keyless per-pool volume/APR, served over https (Caddy + Let's Encrypt on Hetzner).
+const L1PRICE = "https://l1price.genesisl1-tools.uk";
 
 let sortKey = "liq", sortDir = -1;   // default: liquidity desc
 
